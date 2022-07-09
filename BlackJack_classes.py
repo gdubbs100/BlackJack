@@ -61,7 +61,8 @@ class Game:
         hit = True
 
         while not player.bust and hit:
-            hit = player.hitOrStay(self.dealer.faceup)
+
+            hit = player.hitOrStay(faceup = self.dealer.faceup)
 
             if hit:
                 player.addCard(self.deck.deal(1))
@@ -101,6 +102,7 @@ class Game:
                 player.faceup = None
 
     def play(self):
+
         self.deck.shuffle(5)  # shuffle the deck
         self.deal()  # make sure each player has cards
         # make sure players know dealer showing
@@ -126,7 +128,7 @@ class Player:
         self.name = name
         self.wins = {}  # dict of game id, game result (win, loose, draw)
 
-    def hitOrStay(self, faceup = None):
+    def hitOrStay(self, faceup):
         return True if np.random.uniform() <= 0.9 else False
 
     def getHand(self, cards):
@@ -182,7 +184,7 @@ class Dealer(Player):
         self.faceup = None
         self.name = 'Dealer'
 
-    def hitOrStay(self, faceup = None):
+    def hitOrStay(self, faceup):
         # dealer specific hit / stay function
         if self.score <= 17:
             return True
@@ -201,7 +203,7 @@ class HumanPlayer(Player):
         super().__init__()
         self.name = input("Please enter your name...")
 
-    def hitOrStay(self, faceup = None):
+    def hitOrStay(self, faceup):
         print('\n--------------\n',
               "Your hand is: ", self.hand, "\n",
               "Your score is: ", self.score, "\n",
