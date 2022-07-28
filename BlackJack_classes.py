@@ -46,11 +46,12 @@ class Deck:
 class Game:
     """class for the running of the game"""
 
-    def __init__(self, ID, deck, players, dealer):
+    def __init__(self, ID, deck, players, dealer, VERBOSE = True):
         self.ID = ID  # give game an ID (should be an integer)
         self.deck = deck
         self.players = players
         self.dealer = dealer
+        self.VERBOSE = VERBOSE
 
     def deal(self):
         """initial dealing of cards"""
@@ -68,12 +69,12 @@ class Game:
                 player.addCard(self.deck.deal(1))
 
     def checkWinner(self):
-        # scores: 1 = win, 0 draw, -1, lose
+        # scores: 1 = win, 0 = draw, -1 = lose
         for player in self.players:
 
             if player.bust & self.dealer.bust:
-                player.updateWins(self.ID, 0)
-                self.dealer.updateWins(self.ID, 0)
+                player.updateWins(self.ID, -1)
+                self.dealer.updateWins(self.ID, -1)
             elif player.bust & (not self.dealer.bust):
                 player.updateWins(self.ID, -1)
                 self.dealer.updateWins(self.ID, 1)
@@ -89,8 +90,11 @@ class Game:
                 self.dealer.updateWins(self.ID, 1)
             else:
                 print("Uh Oh!", player.score, self.dealer.score)  # leave for checking now...
-            print(player.name, ": ", player.getWins(self.ID), player.score,
-                  self.dealer.name, ": ", self.dealer.getWins(self.ID), self.dealer.score)
+            if self.VERBOSE:
+                # print out if setting verbose
+                print(player.name, ": ", player.getWins(self.ID), player.score,
+                      self.dealer.name, ": ", self.dealer.getWins(self.ID), self.dealer.score)
+
 
     def resetGame(self):
         self.deck.reclaimCards()
@@ -129,7 +133,8 @@ class Player:
         self.wins = {}  # dict of game id, game result (win, loose, draw)
 
     def hitOrStay(self, faceup):
-        return True if np.random.uniform() <= 0.9 else False
+        # 50 / 50 hit or stay
+        return True if np.random.uniform() <= 0.5 else False
 
     def getHand(self, cards):
         self.hand = cards
