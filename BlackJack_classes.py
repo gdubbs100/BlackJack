@@ -1,6 +1,10 @@
 import numpy as np
 import random
+from collections import namedtuple
 
+# tuple for recording states / actions
+sa_tuple = namedtuple(typename="state_action_tuple",
+                      field_names=('state', 'action'))
 
 class Card:
     """Card class for game - units to make up deck"""
@@ -220,4 +224,193 @@ class HumanPlayer(Player):
         if move == "hit":
             return True
         else:
+            return False
+
+
+class RL_Player(Player):
+    """A reinforcement learning agent that uses a policy to determine moves"""
+
+    def __init__(self, name, lr):
+        super().__init__()
+        self.name = name
+        self.lr = lr
+        self.state_actions = []
+        # player score: [0,31]
+        # dealer score of faceup: [1,10] => Ace =1
+        # has useable ace: [0, 1] if has Ace and score + 11 <= 21
+        self.Q = np.random.rand(32, 10, 2, 2)  # action value function
+        self.pi = np.round(np.random.rand(32, 10, 2, 1), 0)  # policy - last array is only action to choose (1, 0)
+
+        self.useable_ace = False
+
+    def calcScore(self):
+        temp_score = 0
+
+        # split cards for score calculation
+        non_aces = [card for card in self.hand if card.value != 'A']
+        aces = [card for card in self.hand if card.value == 'A']
+
+        # check that there actually are cards
+        num_non_aces = len(non_aces)
+        num_aces = len(aces)
+
+        if num_non_aces > 0:
+            for card in non_aces:
+                if card.value.isdigit():
+                    temp_score += int(card.value)
+                elif card.value in {'K', 'Q', 'J'}:
+                    temp_score += 10
+
+        if num_aces > 0:
+            # checks for rare cases of multiple aces
+            if temp_score + 11 + 1 * (num_aces - 1) <= 21:
+                temp_score += 11 + 1 * (num_aces - 1)
+                self.useable_ace = True
+
+            else:
+                temp_score += 1 * num_aces
+                self.useable_ace = False
+
+        self.score = temp_score
+
+        if self.score > 21:
+            self.bust = True
+
+    def getDealerCardScore(self, card):
+        if card.value.isdigit():
+            score = int(card.value)
+        elif card.value in {'K', 'Q', 'J'}:
+            score = 10
+        elif card.value == 'A':
+            score = 1
+        return score
+
+    def hitOrStay(self, faceup):
+        score_idx = self.score
+        faceup_idx = self.getDealerCardScore(faceup) - 1  # minus one for idx
+        useable_ace = int(self.useable_ace)
+        move = self.pi[score_idx, faceup_idx, useable_ace, 0]
+
+        # record your moves here for MC update function
+        # state = (score_idx, faceup_idx, useable_ace)
+        # action = move
+        self.state_actions.insert(
+            0,  # insert state_action at first index
+            sa_tuple(
+                (int(score_idx), int(faceup_idx), int(useable_ace)),
+                int(move)
+            )
+        )
+
+        # hit is 0, stay is 1
+        if move == 0:
+            return True
+        elif move == 1:
+            return False
+
+    def updateWins(self, game_id, result):
+        self.wins[game_id] = result
+        self.updatePolicy(game_id)
+
+    def updatePolicy(self, game_id):
+        # most recent action at start
+        # only winning / loosing / drawing contains a score.
+        # no discounting
+
+        for val in self.state_actions:
+            action = val.action
+            state = val.state
+
+            old = self.Q[state[0], state[1], state[2], action]
+            new = old + self.lr * (self.wins[game_id] - old)
+
+            self.Q[state[0], state[1], state[2], action] = new
+
+            self.pi[state[0], state[1], state[2], 0] = np.argmax(self.Q[state[0], state[1], state[2],])
+
+        self.state_actions = []  # reset state actions
+        self.useable_ace = False  # reset useable ace
+
+
+class softRL_Player(RL_Player):
+    """RL player that uses a soft-epsilon policy"""
+
+    def __init__(self, name, lr, epsilon):
+        super().__init__(name, lr)
+        # self.name = name
+        # self.lr = lr
+        self.epsilon = epsilon
+        raw_pi = np.random.rand(32, 10, 2, 2)
+
+        # ensure pi is normalised for probs
+        raw_total = np.sum(raw_pi, axis=3)
+        self.pi = raw_pi / raw_total[:, :, :, np.newaxis]  # policy - last array is probs for each action
+
+    def hitOrStay(self, faceup):
+        score_idx = self.score
+        faceup_idx = self.getDealerCardScore(faceup) - 1  # minus one for idx
+        useable_ace = int(self.useable_ace)  # get function to determine this
+        probs = self.pi[score_idx, faceup_idx, useable_ace,]
+        move = np.random.choice([0, 1], p=probs)
+
+        # record your moves here for MC update function
+        # state = (score_idx, faceup_idx)
+        # action = move
+        self.state_actions.insert(
+            0,  # insert state_action at first index
+            sa_tuple(
+                (int(score_idx), int(faceup_idx), int(useable_ace)),
+                int(move)
+            )
+        )
+
+        # hit is 0, stay is 1
+        if move == 0:
+            return True
+        elif move == 1:
+            return False
+
+    def updateWins(self, game_id, result):
+        self.wins[game_id] = result
+        self.updatePolicy(game_id)
+
+    def updatePolicy(self, game_id):
+        # most recent action at start
+        # only winning / loosing / drawing contains a score.
+        # no discounting
+
+        for val in self.state_actions:
+            action = val.action
+            state = val.state
+
+            old = self.Q[state[0], state[1], state[2], action]
+            new = old + self.lr * (self.wins[game_id] - old)
+
+            self.Q[state[0], state[1], state[2], action] = new
+
+            a_star = np.argmax(self.Q[state[0], state[1], state[2],])
+            not_a_star = np.abs(a_star - 1)  # gives 1 if 0, 0 if 1
+
+            self.pi[state[0], state[1], state[2], a_star] = 1 - self.epsilon + self.epsilon / 2
+            self.pi[state[0], state[1], state[2], not_a_star] = self.epsilon / 2
+
+        self.state_actions = []  # reset state actions
+        self.useable_ace = False  # reset useable ace
+
+
+class Test_Player(Player):
+    """Player with test strategies for benchmarking - random guess (50/50)
+    Always Hit, Always Stay"""
+
+    def __init__(self, name, strat):
+        super().__init__()
+        self.name = name
+        self.strat = strat
+
+    def HitOrStay(self):
+        if self.strat == 'RANDOM':
+            return True if np.random.uniform() <= 0.5 else False
+        elif self.strat == 'HIT':
+            return True
+        elif self.strat == 'STAY':
             return False
